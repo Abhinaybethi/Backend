@@ -9,41 +9,66 @@ app.use(express.json());
 
 const PORT = 3000;
 
-app.get("/", (req, res) => {
-    res.send("Server is up and running on port 3000! Ready to handle requests.");
-});
-
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
-
-app.post("/users", async (req, res) => {
+app.get("/buses/available/:seats", async (req, res) => {
     try {
-        const { name, email } = req.body;
+        const { seats } = req.params;
 
-        if (!name || !email) {
+        const [buses] = await db.execute(
+            `SELECT * FROM Buses
+       WHERE availableSeats > ?`,
+            [seats]
+        );
+
+        console.log(
+            `Retrieved buses with more than ${seats} available seats`
+        );
+
+        res.status(200).json(buses);
+
+    } catch (error) {
+        console.error("Error retrieving available buses:", error);
+
+        res.status(500).json({
+            message: "Failed to retrieve buses"
+        });
+    }
+});
+app.post("/buses", async (req, res) => {
+    try {
+        const {
+            busNumber,
+            totalSeats,
+            availableSeats
+        } = req.body;
+
+        if (!busNumber || !totalSeats || availableSeats === undefined) {
             return res.status(400).json({
-                message: "Name and email are required"
+                message: "busNumber, totalSeats and availableSeats are required"
             });
         }
 
         const [result] = await db.execute(
-            "INSERT INTO Users (name, email) VALUES (?, ?)",
-            [name, email]
+            `INSERT INTO Buses
+       (busNumber, totalSeats, availableSeats)
+       VALUES (?, ?, ?)`,
+            [busNumber, totalSeats, availableSeats]
         );
 
-        console.log(`User inserted successfully. ID: ${result.insertId}`);
+        console.log(`Bus inserted successfully. ID: ${result.insertId}`);
 
         res.status(201).json({
-            message: "User created successfully",
-            userId: result.insertId
+            message: "Bus created successfully",
+            busId: result.insertId
         });
 
     } catch (error) {
-        console.error("Insert error:", error);
+        console.error("Error inserting bus:", error);
 
         res.status(500).json({
-            message: "Failed to create user"
+            message: "Failed to create bus"
         });
     }
 });
