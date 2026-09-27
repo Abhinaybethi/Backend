@@ -1,7 +1,14 @@
 require("dotenv").config();
 
 const express = require("express");
-const db = require("./config/db");
+const { Op } = require("sequelize");
+
+const sequelize = require("./config/sequelize");
+
+const User = require("./models/User");
+const Bus = require("./models/Bus");
+const Booking = require("./models/Booking");
+const Payment = require("./models/Payment");
 
 const app = express();
 
@@ -15,206 +22,160 @@ app.use(express.json());
 // --------------------------------------------------
 
 app.get("/", (req, res) => {
-    res.send("Student Management API is running!");
+    res.send("Bus Booking API is running!");
 });
 
 
 // --------------------------------------------------
-// POST /students
-// Create a student
+// POST /users
+// Create a user using Sequelize
 // --------------------------------------------------
 
-app.post("/students", async (req, res) => {
+app.post("/users", async (req, res) => {
     try {
-        const { name, email, age } = req.body;
+        const { name, email } = req.body;
 
-        if (!name || !email || age === undefined) {
+        if (!name || !email) {
             return res.status(400).json({
-                message: "Name, email and age are required"
+                message: "Name and email are required"
             });
         }
 
-        const [result] = await db.execute(
-            `INSERT INTO students (name, email, age)
-             VALUES (?, ?, ?)`,
-            [name, email, age]
-        );
+        const user = await User.create({
+            name,
+            email
+        });
 
         console.log(
-            `INSERT: Student created with ID ${result.insertId}`
+            `INSERT: User created with ID ${user.id}`
         );
 
         res.status(201).json({
-            message: "Student created successfully",
-            studentId: result.insertId
+            message: "User created successfully",
+            user
         });
 
     } catch (error) {
+        console.error("CREATE USER ERROR:", error);
 
-        console.error("INSERT ERROR:", error);
-
-        if (error.code === "ER_DUP_ENTRY") {
+        if (error.name === "SequelizeUniqueConstraintError") {
             return res.status(409).json({
                 message: "Email already exists"
             });
         }
 
         res.status(500).json({
-            message: "Failed to create student"
+            message: "Failed to create user"
         });
     }
 });
 
 
 // --------------------------------------------------
-// GET /students
-// Retrieve all students
+// GET /users
+// Retrieve all users using Sequelize
 // --------------------------------------------------
 
-app.get("/students", async (req, res) => {
+app.get("/users", async (req, res) => {
     try {
+        const users = await User.findAll();
 
-        const [students] = await db.execute(
-            "SELECT * FROM students"
-        );
-
-        res.status(200).json(students);
+        res.status(200).json(users);
 
     } catch (error) {
-
-        console.error("GET STUDENTS ERROR:", error);
+        console.error("GET USERS ERROR:", error);
 
         res.status(500).json({
-            message: "Failed to retrieve students"
+            message: "Failed to retrieve users"
         });
     }
 });
 
 
 // --------------------------------------------------
-// GET /students/:id
-// Retrieve one student
+// POST /buses
+// Create a bus using Sequelize
 // --------------------------------------------------
 
-app.get("/students/:id", async (req, res) => {
+app.post("/buses", async (req, res) => {
     try {
+        const {
+            busNumber,
+            totalSeats,
+            availableSeats
+        } = req.body;
 
-        const { id } = req.params;
-
-        const [students] = await db.execute(
-            "SELECT * FROM students WHERE id = ?",
-            [id]
-        );
-
-        if (students.length === 0) {
-            return res.status(404).json({
-                message: "Student not found"
-            });
-        }
-
-        res.status(200).json(students[0]);
-
-    } catch (error) {
-
-        console.error("GET STUDENT ERROR:", error);
-
-        res.status(500).json({
-            message: "Failed to retrieve student"
-        });
-    }
-});
-
-
-// --------------------------------------------------
-// PUT /students/:id
-// Update student
-// --------------------------------------------------
-
-app.put("/students/:id", async (req, res) => {
-    try {
-
-        const { id } = req.params;
-        const { name, email, age } = req.body;
-
-        if (!name || !email || age === undefined) {
+        if (
+            !busNumber ||
+            totalSeats === undefined ||
+            availableSeats === undefined
+        ) {
             return res.status(400).json({
-                message: "Name, email and age are required"
+                message: "Bus number, total seats and available seats are required"
             });
         }
 
-        const [result] = await db.execute(
-            `UPDATE students
-             SET name = ?, email = ?, age = ?
-             WHERE id = ?`,
-            [name, email, age, id]
-        );
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                message: "Student not found"
-            });
-        }
+        const bus = await Bus.create({
+            busNumber,
+            totalSeats,
+            availableSeats
+        });
 
         console.log(
-            `UPDATE: Student ${id} updated successfully`
+            `INSERT: Bus created with ID ${bus.id}`
         );
 
-        res.status(200).json({
-            message: "Student updated successfully"
+        res.status(201).json({
+            message: "Bus created successfully",
+            bus
         });
 
     } catch (error) {
+        console.error("CREATE BUS ERROR:", error);
 
-        console.error("UPDATE ERROR:", error);
-
-        if (error.code === "ER_DUP_ENTRY") {
+        if (error.name === "SequelizeUniqueConstraintError") {
             return res.status(409).json({
-                message: "Email already exists"
+                message: "Bus number already exists"
             });
         }
 
         res.status(500).json({
-            message: "Failed to update student"
+            message: "Failed to create bus"
         });
     }
 });
 
 
 // --------------------------------------------------
-// DELETE /students/:id
-// Delete student
+// GET /buses/available/:seats
+// Retrieve buses where availableSeats > seats
 // --------------------------------------------------
 
-app.delete("/students/:id", async (req, res) => {
+app.get("/buses/available/:seats", async (req, res) => {
     try {
+        const seats = Number(req.params.seats);
 
-        const { id } = req.params;
-
-        const [result] = await db.execute(
-            "DELETE FROM students WHERE id = ?",
-            [id]
-        );
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                message: "Student not found"
+        if (Number.isNaN(seats)) {
+            return res.status(400).json({
+                message: "Seats must be a valid number"
             });
         }
 
-        console.log(
-            `DELETE: Student ${id} deleted successfully`
-        );
-
-        res.status(200).json({
-            message: "Student deleted successfully"
+        const buses = await Bus.findAll({
+            where: {
+                availableSeats: {
+                    [Op.gt]: seats
+                }
+            }
         });
 
-    } catch (error) {
+        res.status(200).json(buses);
 
-        console.error("DELETE ERROR:", error);
+    } catch (error) {
+        console.error("GET AVAILABLE BUSES ERROR:", error);
 
         res.status(500).json({
-            message: "Failed to delete student"
+            message: "Failed to retrieve available buses"
         });
     }
 });
@@ -223,19 +184,28 @@ app.delete("/students/:id", async (req, res) => {
 // --------------------------------------------------
 // Start server
 // --------------------------------------------------
-const sequelize = require("./config/sequelize");
-const Student = require("./models/Student");
 
 async function startServer() {
     try {
+
+        // Connect to MySQL
         await sequelize.authenticate();
 
-        console.log("Sequelize connected to MySQL successfully!");
+        console.log(
+            "Sequelize connected to MySQL successfully!"
+        );
 
-        await Student.sync();
+        // Synchronize all required models
+        await User.sync();
+        await Bus.sync();
+        await Booking.sync();
+        await Payment.sync();
 
-        console.log("Students table synchronized successfully!");
+        console.log(
+            "All Sequelize models synchronized successfully!"
+        );
 
+        // Start Express server
         app.listen(PORT, () => {
             console.log(
                 `Server is up and running on port ${PORT}! Ready to handle requests.`
@@ -243,7 +213,10 @@ async function startServer() {
         });
 
     } catch (error) {
-        console.error("Database startup error:", error);
+        console.error(
+            "Database startup error:",
+            error
+        );
     }
 }
 
